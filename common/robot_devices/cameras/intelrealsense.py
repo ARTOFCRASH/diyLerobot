@@ -27,7 +27,7 @@ import traceback
 from collections import Counter
 from pathlib import Path
 from threading import Thread
-
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -137,26 +137,17 @@ def save_images_from_cameras(
                 for camera in cameras:
                     # If we use async_read when fps is None, the loop will go full speed, and we will end up
                     # saving the same images from the cameras multiple times until the RAM/disk is full.
-                    color_image, depth_image = camera.read() if fps is None else camera.async_read()
+                    color_image = camera.read() if fps is None else camera.async_read()
                     if color_image is None:
                         print("No Frame")
-
+                        
                     bgr_converted_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2BGR)
 
                     # 异步保存 color
                     executor.submit(
                     save_image,
                     color_image,
-                    f"color_{camera.serial_number}",
-                    frame_index,
-                    images_dir,
-                    )
-                    
-                    # 异步保存 depth（已经是 8-bit 灰度或伪彩色）
-                    executor.submit(
-                    save_image,
-                    depth_image,
-                    f"depth_{camera.serial_number}",
+                    f"intelrealsense_{camera.serial_number}",
                     frame_index,
                     images_dir,
                     )
@@ -369,6 +360,29 @@ class IntelRealSenseCamera:
         self.capture_height = round(actual_height)
 
         self.is_connected = True
+    
+    
+    def fuse_color_and_depth(self, color_image, depth_map):
+    	if color_image.shape[1] != depth_map.shape[1]:
+    		raise ValueError('Width mismatch between color and depth map')
+    	
+    	stacked = np.vstack((color_image, depth_map))
+    	
+    	return stacked
+    
+    
+    def HandleDepth(self, depth_frame):
+    	if depth_frame is None:
+    		print('No depth frame received')
+    		return None
+    		   	
+    	depth_data = np.asanyarray(depth_frame.get_data())
+    	# depth_data = depth_data.astype(np.uint16)
+    	depth_data = cv2.normalize(depth_data, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    	depth_map = cv2.applyColorMap(depth_data, cv2.COLORMAP_JET)
+    	return depth_map
+    
+    
 
     def read(self, temporary_color: str | None = None) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         """Read a frame from the camera returned in the format height x width x channels (e.g. 480 x 640 x 3)
@@ -431,9 +445,11 @@ class IntelRealSenseCamera:
             if not depth_frame:
                 raise OSError(f"Can't capture depth image from IntelRealSenseCamera({self.serial_number}).")
 
-            depth_map = np.asanyarray(depth_frame.get_data())
-
-            h, w = depth_map.shape
+            # depth_map = np.asanyarray(depth_frame.get_data())   # 获取深度图
+            
+            depth_map = self.HandleDepth(depth_frame)
+            
+            h, w, _ = depth_map.shape
             if h != self.capture_height or w != self.capture_width:
                 raise OSError(
                     f"Can't capture depth map with expected height and width ({self.height} x {self.width}). ({h} x {w}) returned instead."
@@ -441,18 +457,9 @@ class IntelRealSenseCamera:
 
             if self.rotation is not None:
                 depth_map = cv2.rotate(depth_map, self.rotation)
-            
-
-            near, far = 600, 800
-            depth_clip = np.clip(depth_map, near, far)
-            depth_norm = cv2.normalize(depth_clip, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-            depth_gray = depth_norm
-            depth_colored = cv2.applyColorMap(depth_gray, cv2.COLORMAP_JET)
-
-
-
-            
-            return color_image, depth_colored
+           
+                  
+            return color_image, depth_map
         else:
             return color_image
 
@@ -487,7 +494,7 @@ class IntelRealSenseCamera:
                 )
 
         if self.use_depth:
-            return self.color_image, self.depth_map
+            return self.fuse_color_and_depth(self.color_image, self.depth_map)
         else:
             return self.color_image
 

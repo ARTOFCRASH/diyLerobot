@@ -101,6 +101,7 @@ class IntelRealSenseCameraConfig(CameraConfig):
             )
 
         self.channels = 3
+        
 
         at_least_one_is_not_none = self.fps is not None or self.width is not None or self.height is not None
         at_least_one_is_none = self.fps is None or self.width is None or self.height is None

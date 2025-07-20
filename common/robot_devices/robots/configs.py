@@ -482,7 +482,7 @@ class So101RobotConfig(ManipulatorRobotConfig):
                 fps=30,
                 width=640,
                 height=480,
-                use_depth=False,
+                use_depth=True,
             ),
         }
     )
