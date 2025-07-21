@@ -90,7 +90,7 @@ def save_images_from_cameras(
     height=None,
     record_time_s=2,
     mock=False,
-    use_depth=True,                                                       # 改动1
+    use_depth=True,                                                       
 ):
     """
     Initializes all the cameras and saves images to the directory. Useful to visually identify the camera
@@ -110,13 +110,14 @@ def save_images_from_cameras(
     for cam_sn in serial_numbers:
         print(f"{cam_sn=}")
         config = IntelRealSenseCameraConfig(
-            serial_number=cam_sn, fps=fps, width=width, height=height, use_depth=True, mock=mock     # 改动2
+            serial_number=cam_sn, fps=fps, width=width, height=height, use_depth=True, mock=mock    
         )
         camera = IntelRealSenseCamera(config)
         camera.connect()
         print(
             f"IntelRealSenseCamera({camera.serial_number}, fps={camera.fps}, width={camera.capture_width}, use_depth={camera.use_depth}, height={camera.capture_height}, color_mode={camera.color_mode})"
-        )                                                                                           # 改动3
+        )                                                                                           
+        
         cameras.append(camera)
 
     images_dir = Path(images_dir)
@@ -143,7 +144,7 @@ def save_images_from_cameras(
                         
                     bgr_converted_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2BGR)
 
-                    # 异步保存 color
+                    # 异步保存
                     executor.submit(
                     save_image,
                     color_image,
@@ -166,6 +167,21 @@ def save_images_from_cameras(
         print(f"Images have been saved to {images_dir}")
         for camera in cameras:
             camera.disconnect()
+
+
+class TemporalFilter:
+	def __init__(self, alpha):
+		self.alpha = alpha
+		self.previous_frame = None
+		
+	def process(self, frame):
+		if self.previous_frame is None:
+			result = frame
+		else:
+			result = cv2.addWeighted(frame, self.alpha, self.previous_fame, 1 - self.alpha, 0)
+			self.previous_frame = result
+			
+		return result
 
 
 class IntelRealSenseCamera:
@@ -251,6 +267,7 @@ class IntelRealSenseCamera:
         self.color_image = None
         self.depth_map = None
         self.logs = {}
+        self.filter = TemporalFilter(alpha=0.5)
 
         if self.mock:
             import tests.cameras.mock_cv2 as cv2
@@ -381,8 +398,9 @@ class IntelRealSenseCamera:
     		   	
     	depth_data = np.asanyarray(depth_frame.get_data())
     	# depth_data = depth_data.astype(np.uint16)
-    	depth_data = cv2.normalize(depth_data, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    	depth_map = cv2.applyColorMap(depth_data, cv2.COLORMAP_JET)
+    	filtered_depth_data = self.filter.process(depth_data)
+    	filtered_depth_data = cv2.normalize(filtered_depth_data, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    	depth_map = cv2.applyColorMap(filtered_depth_data, cv2.COLORMAP_JET)
     	return depth_map
     
     
