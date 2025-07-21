@@ -236,8 +236,7 @@ class IntelRealSenseCamera:
             self.width = config.height
             self.height = config.width
         else:
-            self.width = config.width
-            self.height = config.height
+            pass
 
         self.fps = config.fps
         self.channels = config.channels
@@ -245,7 +244,6 @@ class IntelRealSenseCamera:
         self.use_depth = config.use_depth
         self.force_hardware_reset = config.force_hardware_reset
         self.mock = config.mock
-
         self.camera = None
         self.is_connected = False
         self.thread = None
@@ -266,6 +264,11 @@ class IntelRealSenseCamera:
             self.rotation = cv2.ROTATE_90_CLOCKWISE
         elif config.rotation == 180:
             self.rotation = cv2.ROTATE_180
+            
+        if config.use_depth:
+        	self.width = config.width
+        	self.height = config.height * 2
+        
 
     def find_serial_number_from_name(self, name):
         camera_infos = find_cameras()
